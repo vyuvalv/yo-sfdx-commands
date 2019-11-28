@@ -1,11 +1,11 @@
 const Generator = require('yeoman-generator');
-const shell = require('shelljs');
 const chalk = require('chalk');
-const spinner = require('ora');
 const helper = require('../app/js/common.js');
 
-var fuzzy = require('fuzzy');
-
+const INFO = function(msg){ return chalk.blueBright(msg); }
+const PROCESS = function(msg){ return chalk.magentaBright(msg); }
+const WARNING = function(msg){ return chalk.yellowBright(msg); }
+const ERROR = function(msg){ return chalk.redBright(msg); }
 
 module.exports = class extends Generator {
   constructor(args, opts) {
@@ -28,7 +28,7 @@ initializing() {
                                                                     output: command }));
   }
   else {
-    this.log(`ERROR ${ chalk.red(sfdxCommandsOutput.result ) }`);
+    this.log(`ERROR ${ ERROR(sfdxCommandsOutput.result ) }`);
   }
     
 }
@@ -43,7 +43,7 @@ prompting() {
             type: 'autocomplete',
             name: 'command',
             suggestOnly: false,
-            message: chalk.yellow('Choose a Command : '),
+            message: PROCESS('Choose a Command : '),
             source: function(answers, input){
               return helper.searchByKey(input, sfdx_commands,'value');
             },
@@ -58,7 +58,8 @@ prompting() {
     // will store the command publicly 
     this.props = {
       command : 'sfdx ',
-      flags : [{ value : '--help' }]
+      flags : [{ value : '--help' }],
+      run : 'sfdx --help'
     };
       
     // prompt select an SFDX command
@@ -67,20 +68,26 @@ prompting() {
         this.props.command = answers.command;
         // find the selected command object
         const output = helper.getCommandDescribe(answers.command,this.sfdxCommands);
+        this.log( chalk ` \n{cyanBright COMMAND : } \n`);
+        this.log( chalk `{bold ${output.details.id} }\n`);
+        // show description of the command
+        if(output.details.description) {
+          this.log( chalk `{cyanBright DESCRIPTION : } \n`);
+          this.log(output.details.description);
+        }
         // show some examples if exists
         if(output.details.examples && output.details.examples.length){
-            this.log(chalk.cyan('Examples : \n'));
+          this.log( chalk `{cyanBright EXAMPLES : } \n`);
           output.details.examples.forEach( item => {
             this.log(item);
           });
-            this.log(' \n');
+          this.log(` \n`);
        }
-
         // allow to multi select an options for flags to later on create questions for values
         const commandDetailsQuestion = [ {
           type: 'checkbox-plus',
           name: 'selectedFlags',
-          message: chalk.yellow('Select flags'),
+          message: PROCESS('Select flags'),
           pageSize: 5,
           highlight: true,
           searchable: true,
@@ -98,12 +105,12 @@ prompting() {
 
         // prompt flags options
         return this.prompt(commandDetailsQuestion).then((answers) => {
-
+          this.props.flags = answers.selectedFlags;
           //create questions from flags
-          const extraQuestions = helper.createQuestions(answers.selectedFlags,output.relatedFlags);
+          const selectedFlagsQuestions = helper.createQuestions(answers.selectedFlags,output.relatedFlags);
           
           // prompt questions for each flag option
-          return this.prompt(extraQuestions).then((answers) => {
+          return this.prompt(selectedFlagsQuestions).then((answers) => {
             // building the command
             let commandText = ` sfdx ${this.props.command}`;
             output.relatedFlags.forEach(flag => {
@@ -119,7 +126,7 @@ prompting() {
               }
             });
             
-            this.props.fullCommand = commandText;
+            this.props.run = commandText;
            
           });
         
@@ -131,7 +138,9 @@ prompting() {
   }
 
   writing() {
-    this.log(chalk.yellow(` will run : \n  ${this.props.fullCommand}`));
+    this.log(WARNING(` will run : \n  ${this.props.run}`));
+    const runOutput = helper.runSFDXCommand(this.props.run);
+    this.log( `\n Output : \n\n  ${INFO(runOutput.result)} `);
   }
 
   end() {
