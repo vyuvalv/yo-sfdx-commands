@@ -4,13 +4,15 @@ const yosay = require('yosay');
 
 const helper = require('../app/js/common.js');
 
-const INFO = function(msg){ return chalk.blueBright(msg); }
 const PROCESS = function(msg){ return chalk.magentaBright(msg); }
 const WARNING = function(msg){ return chalk.yellowBright(msg); }
 const ERROR = function(msg){ return chalk.redBright(msg); }
 const BOLD = function(msg){ return chalk.bold(msg); }
 
-const DEFAULT_FLAGS = ['json', '-u', '-i'];
+// will be selected as default in flag question
+const DEFAULT_FLAGS = Object.freeze(['json', '-u', '-i']);
+// will be handled differently as those have depenedency (execluded from dynamic questions builder)
+const SPECIAL_FLAGS = Object.freeze(['-u', 'values']);
 
 module.exports = class extends Generator {
   constructor(args, opts) {
@@ -26,22 +28,21 @@ initializing() {
   this.env.adapter.promptModule.registerPrompt('filePath', require('inquirer-file-path'));
   this.env.adapter.promptModule.registerPrompt('directory', require('inquirer-directory'));
 
- 
-  if(this.options.command)
-  this.log('Commands so far :\n' + this.options.command);
-
   // getting all SFDX commands
-  let sfdxCommandsOutput = helper.getSFDXCommands();
+  let sfdxCommandsOutput = helper.initSFDXCommands();
   // mapping the commands into question options
   if(sfdxCommandsOutput.code === 0){
     this.sfdxCommands = sfdxCommandsOutput.result.map( command =>({ name :command.id, 
                                                                     value: command.id , 
                                                                     output: command }));
-    this.sfdxOrgs = helper.getOrgs();       
-    this.log( yosay(  this.sfdxOrgs.yosay ));                                                 
+    // init org details
+    this.sfdxOrgs = helper.getOrgs();  
+
+    if(!this.options.skipIntro)     
+      this.log( yosay(  this.sfdxOrgs.yosay ));                                                 
   }
   else {
-    this.log(`ERROR ${ ERROR(sfdxCommandsOutput.result ) }`);
+      this.log(`ERROR ${ ERROR(sfdxCommandsOutput.result ) }`);
   }
     
 }
@@ -49,8 +50,6 @@ initializing() {
 
 prompting() { 
   
-    
-
     const allOrgs = [...this.sfdxOrgs.scratchOrgs, ...this.sfdxOrgs.nonScratchOrgs]; 
     
     const self = this;  
@@ -78,6 +77,8 @@ prompting() {
       flags : [],
       selectedFlags: [],
       selectedOrg :{},
+      schemaSObjects : [],
+      sObjectName : '',
       runCommand : ''
     };
  
@@ -199,28 +200,28 @@ prompting() {
           this.props.writeCommand = answers.writeCommand;
           this.props.aliasName = answers.aliasName;
           this.props.commandOutputFile = answers.commandOutputFile;
-          this.props.orgsDetails = {};
-
+       
           // get flags details and divide by logic
           this.props.selectedFlags = this.props.commandDescribe.relatedFlags.filter( item => answers.selectedFlags.includes(item.value) );
           // exclude flags from this step
-          const excludeFlags = ['-u', 'values'];
-          const filteredFlags = this.props.selectedFlags.filter( item => !excludeFlags.includes(item.value) && !excludeFlags.includes(item.short) );
+         
+          const filteredFlags = this.props.selectedFlags.filter( item => !SPECIAL_FLAGS.includes(item.value) && !SPECIAL_FLAGS.includes(item.short) );
         
           // Data questions
           const isSObject = this.props.selectedFlags.some(flag => flag.short == 'sobjecttype');
           
-          let allSObject = [];
           if(isSObject){
-              allSObject = helper.getSchema(this.props.selectedOrg.value);
+            this.props.schemaSObjects = helper.getSchema(this.props.selectedOrg.value);
           }
-            //create initial questions from flags
-          let selectedFlagsQuestions = helper.createQuestions(filteredFlags, allSObject);
+          //create questions from flags
+          let selectedFlagsQuestions = helper.createQuestions(filteredFlags, this.props.schemaSObjects);
           
-       
           // prompt questions for each flag option
           return this.prompt(selectedFlagsQuestions).then((answers) => {
-
+            // store sobject name
+            this.props.sObjectName = answers['-s'];
+    
+            // populate all flags values
             this.props.selectedFlags.forEach(flag => {
               // when question value match the flag value
               if( answers[flag.value] ){
@@ -231,13 +232,10 @@ prompting() {
               // priority questions
               const isTargetOrg = this.props.selectedFlags.some(flag => flag.value == '-u');
               const isDevHub  = this.props.selectedFlags.some(flag => flag.short == 'targetdevhubusername');
-              
+            
              
-              if( answers['-s'] ) {
-
-                const selectedSObject = helper.getSObjectDescribe(answers['-s'], this.props.selectedOrg.value, answers['-t']);
-                // store sobject name
-                this.sObjectName = selectedSObject.name;
+              if( this.props.sObjectName ) {
+                const selectedSObject = helper.getSObjectDescribe( this.props.sObjectName, this.props.selectedOrg.value, answers['-t']);
                 // define fields options based on command
                 let fieldOptions = [];
                 if(this.props.commandDescribe.name.indexOf('force:data:record:create') === -1 ) {
@@ -285,7 +283,6 @@ prompting() {
                     return this.prompt(fieldsQuestions).then((answers) => {
 
                           let fieldsValues = []; 
-                        
                           for(const input in answers) {
                             if(answers.hasOwnProperty(input)) {
                               if(answers.fieldsMenu.includes(input)) {

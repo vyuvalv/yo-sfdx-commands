@@ -30,7 +30,7 @@ module.exports = class extends Generator {
               default: 'commands.json',
               filter:function(fileName) {
                 //always store as .json
-                fileName = fileName.indexOf('.') > -1 ? fileName.replace(fileName.substr(fileName.indexOf('.'),fileName.length), '.json') :fileName + '.json';
+                fileName = fileName.indexOf('.') >= 1 ? fileName.replace(fileName.substr(fileName.indexOf('.'),fileName.length), '.json') :fileName + '.json';
                 return fileName;
               },
               validate: function(value){

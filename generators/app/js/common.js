@@ -1,4 +1,3 @@
-
 'use strict';
 const chalk = require('chalk');
 const shell = require('shelljs');
@@ -14,6 +13,7 @@ const SEPERATOR =  {
     line: '--------------'
 };
 
+// enum for NONE
 const DEFAULT_NONE = Object.freeze(
              {  name:'NONE',
                 value:'NONE',
@@ -24,17 +24,14 @@ const INFO = function(msg){ return chalk.blueBright(msg); }
 const SUCCESS = function(msg){ return chalk.greenBright(msg); }
 const WARNING = function(msg){ return chalk.yellowBright(msg); }
 const ERROR = function(msg){ return chalk.redBright(msg); }
-const PROCESS = function(msg){ return chalk.magentaBright(msg); }
 
 module.exports = {
 
     /**********
-     * Get all SFDX commands from library
-     * sfdx commands 
-     * Parse as Json 
-     * Return output as JSON object with all SFDX commands
+     * Get all SFDX commands from `sfdx commands`
+     * Parse and Return output as JSON object with all SFDX commands
      * *********/
-    getSFDXCommands: function() {
+    initSFDXCommands: function() {
         let output = {
             sfdxCommand:'sfdx commands --json',
             code:'',
@@ -63,6 +60,10 @@ module.exports = {
         }
        return output;
     },
+     /**********
+     * Get all SFDX orgs from `sfdx force:org:list`
+     * Parse and Return output as JSON object with all orgs
+     * *********/
     getOrgs: function() {
         let output = {
             sfdxCommand:'sfdx force:org:list --json',
@@ -140,40 +141,10 @@ module.exports = {
             }
         return output;
     },
-    runSFDXCommand: function(command) {
-        let output = {
-            command: command,
-            code:'1',
-            result:''
-        };
-        // starts loading
-        this.loading = new spinner(
-            { spinner:'dots2',
-              color : 'yellow' }
-          ).start(WARNING('getting sfdx commands...\n'));
-
-        shell.echo(INFO('run : ' + output.command));
-        let commandOutput = shell.exec(command, { silent: true } );
-            // output code
-            output.code = commandOutput.code;
-        if(commandOutput.code === 0){
-            // command output
-            try {
-                output.result = JSON.parse( commandOutput.stdout );
-            }
-            catch (ev) {
-                output.result = commandOutput.stdout;
-            }
-            this.loading.succeed( SUCCESS('command ran successfully'));  
-        }
-        else {
-            // command error output
-            output.result = JSON.parse( commandOutput.stderr );
-            this.loading.fail( ERROR('command failed to execute')); 
-            shell.exit(1);
-        }
-       return output;
-    },
+    /**********
+     * Get schema sobjects list from `sfdx force:schema:sobject:list`
+     * Parse and Return output as JSON object with all sobjects to select
+     * *********/
     getSchema: function(username) {
         let schemaCommand = 'sfdx force:schema:sobject:list --json -c all';
         let output;
@@ -201,6 +172,10 @@ module.exports = {
         }
        return output;
     },
+    /**********
+     * Get schema sobjects fields list from `sfdx force:schema:sobject:describe`
+     * Parse and Return output as JSON object with all sobjects fields to select
+     * *********/
     getSObjectDescribe:function(sobjecttype,targetusername,usetoolingapi = false) {
         this.loading = new spinner(
             { spinner:'monkey',
@@ -239,11 +214,47 @@ module.exports = {
                 }  
         return output;
     },
- 
- /*******
-  * Search Command by command value in all commands list given 
-  *******/
- getCommandDescribe: function( commandObject , defaultCommandOptions){
+     /**********
+     * Execute SFDX command
+     * *********/
+    runSFDXCommand: function(command) {
+        let output = {
+            command: command,
+            code:'1',
+            result:''
+        };
+        // starts loading
+        this.loading = new spinner(
+            { spinner:'dots2',
+              color : 'yellow' }
+          ).start(WARNING('getting sfdx commands...\n'));
+
+        shell.echo(INFO('run : ' + output.command));
+        let commandOutput = shell.exec(command, { silent: true } );
+            // output code
+            output.code = commandOutput.code;
+        if(commandOutput.code === 0){
+            // command output
+            try {
+                output.result = JSON.parse( commandOutput.stdout );
+            }
+            catch (ev) {
+                output.result = commandOutput.stdout;
+            }
+            this.loading.succeed( SUCCESS('command ran successfully'));  
+        }
+        else {
+            // command error output
+            this.log(commandOutput.stdout);
+            this.loading.fail( ERROR('command failed to execute')); 
+            shell.exit(1);
+        }
+       return output;
+    },
+    /*******
+     * build command describe output with relevenat flags
+     *******/
+    getCommandDescribe: function( commandObject , defaultCommandOptions){
 
     let output = {
         name: commandObject.value,
@@ -284,6 +295,9 @@ module.exports = {
     }
     return output;
     },
+     /*******
+     * used in auto-complete questions to search by keyword
+     *******/
     searchByKey: function(input, searchOptions, key = 'name') {
         input = input || '';
         return new Promise(function(resolve) {
@@ -298,6 +312,9 @@ module.exports = {
             }) );
         });
     },
+    /*******
+     * build dynamic questions from flags
+     *******/
     createQuestions: function(selectedFlags, schemaOutput) {
         let questions = [];
         const self = this;
