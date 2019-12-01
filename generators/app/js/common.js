@@ -9,11 +9,22 @@ const CANCEL_OPTION =  {
     name : chalk.inverse('Cancel'),
     value : 'cancel'
 };
+const SEPERATOR =  {
+    type: 'separator', 
+    line: '--------------'
+};
+
+const DEFAULT_NONE = Object.freeze(
+             {  name:'NONE',
+                value:'NONE',
+                alias: 'NONE'
+            });
 
 const INFO = function(msg){ return chalk.blueBright(msg); }
 const SUCCESS = function(msg){ return chalk.greenBright(msg); }
 const WARNING = function(msg){ return chalk.yellowBright(msg); }
 const ERROR = function(msg){ return chalk.redBright(msg); }
+const PROCESS = function(msg){ return chalk.magentaBright(msg); }
 
 module.exports = {
 
@@ -25,7 +36,7 @@ module.exports = {
      * *********/
     getSFDXCommands: function() {
         let output = {
-            command:'',
+            sfdxCommand:'sfdx commands --json',
             code:'',
             result:''
         };
@@ -35,11 +46,8 @@ module.exports = {
               color : 'blue' }
           ).start(WARNING('start pulling sfdx commands...\n'));
 
-        let sfdxCommand = ' sfdx commands --json';
-            //storing command as output
-            output.command = sfdxCommand;
-        shell.echo( INFO('run : ' + output.command));
-        let commandOutput = shell.exec(sfdxCommand, { silent: true } );
+        shell.echo( INFO('run : ' + output.sfdxCommand));
+        let commandOutput = shell.exec(output.sfdxCommand, { silent: true } );
             // output code
             output.code = commandOutput.code;
         if(commandOutput.code === 0){
@@ -55,10 +63,87 @@ module.exports = {
         }
        return output;
     },
+    getOrgs: function() {
+        let output = {
+            sfdxCommand:'sfdx force:org:list --json',
+            code:'',
+            nonScratchOrgs:[],
+            scratchOrgs:[],
+            defaultDevHub: DEFAULT_NONE,
+            defaultScratchOrg: DEFAULT_NONE
+        };
+        this.loading = new spinner(
+            { spinner:'monkey',
+              color : 'yellow' }
+          ).start(WARNING('loading org defaults...\n'));
+
+        // Silently get the available orgs as JSON
+        let orgsCommand = shell.exec( output.sfdxCommand, { silent: true } );
+            // output code
+            output.code = orgsCommand.code;
+            if(orgsCommand.code === 0){
+                    let orgsOutput = JSON.parse( orgsCommand.stdout );
+                    // Collect all non Scratch orgs
+                    output.nonScratchOrgs = orgsOutput.result.nonScratchOrgs.map(org => ({
+                                                                                            name : `${ERROR(org.alias)} (${INFO('O')}) - ${org.username}`,
+                                                                                            value: org.username,
+                                                                                            alias: org.alias,
+                                                                                            orgType: 'org',
+                                                                                            details: org
+                                                                                        }));
+                    // Grab Default DevHub
+                    if(output.nonScratchOrgs.length > 0) {
+                            output.defaultDevHub = output.nonScratchOrgs.find(org => org.details.isDefaultDevHubUsername);
+                            if(!output.defaultDevHub) 
+                                output.defaultDevHub =  DEFAULT_NONE;
+                    }
+                    else {
+                        output.defaultDevHub = DEFAULT_NONE;
+                    }
+                
+                    // Collect Scratch Orgs
+                    output.scratchOrgs  = orgsOutput.result.scratchOrgs.map(org => ({
+                                                                                        name : `${ERROR(org.alias)} (${INFO('S')}) - ${org.username}`,
+                                                                                        value: org.username,
+                                                                                        alias: org.alias,
+                                                                                        orgType: 'scratch',
+                                                                                        details: org
+                                                                                    }));
+                    // Grab Default Scratch Org
+                    if(output.scratchOrgs.length > 0) {
+                        output.defaultScratchOrg = output.scratchOrgs.find(org => org.details.isDefaultUsername);
+                        if(!output.defaultScratchOrg) {
+                            output.defaultScratchOrg = DEFAULT_NONE;
+                        }
+                    }
+                    else {
+                        output.defaultScratchOrg = DEFAULT_NONE;
+                    }
+                // Stops Spinner and show success
+                this.loading.succeed('Pulled defaults successfully');   
+                
+                if(output.defaultDevHub !== DEFAULT_NONE) {
+                    output.yosay = chalk.redBright.underline('Welcome to DX \n') + 
+                    `Connected Orgs : ${chalk.cyan(output.nonScratchOrgs.length)} \n` +
+                    `Active Scratch Orgs : ${chalk.cyan(output.scratchOrgs.length)} \n\n` + 
+                    `Default DevHub : ${chalk.cyan( output.defaultDevHub.alias )} \n` +
+                    `Default Scratch : ${chalk.cyan( output.defaultScratchOrg.alias )} ` ;
+                }
+                else {
+                    output.yosay = chalk.redBright('NEED TO CONNECT DEVHUB');
+                }
+            }
+            else {
+                // Stops Spinner and show failure
+                this.loading.fail('Failed to pull defaults');
+                shell.exit(1);
+            }
+        return output;
+    },
     runSFDXCommand: function(command) {
         let output = {
             command: command,
-            code:'',
+            code:'1',
             result:''
         };
         // starts loading
@@ -85,112 +170,216 @@ module.exports = {
             // command error output
             output.result = JSON.parse( commandOutput.stderr );
             this.loading.fail( ERROR('command failed to execute')); 
+            shell.exit(1);
         }
        return output;
     },
+    getSchema: function(username) {
+        let schemaCommand = 'sfdx force:schema:sobject:list --json -c all';
+        let output;
+        if(username)
+        schemaCommand += ' -u ' + username;
+        // starts loading
+        this.loading = new spinner(
+            { spinner:'dots',
+              color : 'blue' }
+          ).start(WARNING('getting schema...\n'));
+
+        shell.echo( INFO('run : ') + WARNING(schemaCommand));
+        let commandOutput = shell.exec(schemaCommand, { silent: true } );
+        if(commandOutput.code === 0){
+            // command output
+            let sfdxCommandsOutput = JSON.parse( commandOutput.stdout );
+            output = sfdxCommandsOutput.result.map(sobject => ({ name : sobject, value : sobject }));
+            this.loading.succeed( SUCCESS('all sobject were pulled successfully'));  
+           
+        }
+        else {
+            // command error output
+            output = JSON.parse( commandOutput.stderr );
+            this.loading.fail( ERROR('failed pulling commands')); 
+        }
+       return output;
+    },
+    getSObjectDescribe:function(sobjecttype,targetusername,usetoolingapi = false) {
+        this.loading = new spinner(
+            { spinner:'monkey',
+              color : 'yellow' }
+          ).start('getting describe object : ' + sobjecttype + ' from ' + targetusername +'\n');
+
+        let schemaCommand = 'sfdx force:schema:sobject:describe';
+            schemaCommand += ' --json';
+            schemaCommand += ' -u ' + targetusername;
+            schemaCommand += ' -s ' + sobjecttype;
+        
+        if(usetoolingapi)
+            schemaCommand += ' -t ';
+        
+        let output = {};
+        let commandOutput = shell.exec( schemaCommand , { silent: true } );
+        if(commandOutput.code === 0){
+         const response = JSON.parse( commandOutput.stdout );
+                output = response.result;
+                if(output) {
+                    output.value = output.name;
+                    output.fields = output.fields.map( field => ({ 
+                        name: `${ERROR(field.name)} - ${field.label}`,
+                        value: field.name,
+                        checked: field.nameField ? true : false,
+                        updateable: field.updateable,
+                        createable: field.createable,
+                        externalId: field.externalId,
+                        details: field,
+                    }) );
+                    }
+                    this.loading.succeed('Pulled fields successfully from ' + output.name );   
+                }
+                else {
+                    this.loading.fail('Failed to pull fields from ' + sobjecttype); 
+                }  
+        return output;
+    },
+ 
  /*******
   * Search Command by command value in all commands list given 
   *******/
-    getCommandDescribe: function(commandName, commands){
+ getCommandDescribe: function( commandObject , defaultCommandOptions){
 
-        let commandObject = commands.find(command => command.value == commandName);
-
-        let output = {
-            details: commandObject.output,
-            relatedFlags : [],
-            defaultFlags : []
-        };
-        if(commandObject.output.flags){
-            const commandFlags = commandObject.output.flags;
-        
+    let output = {
+        name: commandObject.value,
+        details: commandObject.output,
+        relatedFlags : [],
+        defaultFlags : []
+    };
+    // get flags from command output
+    const commandFlags = commandObject.output.flags;
+    if(commandFlags){
         for(const flag in commandFlags) {
             if(commandFlags.hasOwnProperty(flag)) {
-              
-              // undefined check and populate with 'name'
-              if(!commandFlags[flag]['char'])
-              commandFlags[flag]['char'] = '-'+commandFlags[flag]['name'];
-                    // build options for command flags
-                    const optionItem = {
-                        name: ERROR('-'+commandFlags[flag]['char']) +' '+ commandFlags[flag]['description'],
-                        value: '-'+commandFlags[flag]['char'],
-                        type: commandFlags[flag]['type'],
-                        description:commandFlags[flag]['description'],
-                        disabled:commandFlags[flag]['required'],
-                        short: commandFlags[flag]['name'],
-                        default: commandFlags[flag]['default'],
-                        options: commandFlags[flag]['options']
-                    }
-                    // assign defaults
-                    if(commandFlags[flag]['required'] || commandFlags[flag]['name'] == 'json'){
-                        output.defaultFlags.push('-'+commandFlags[flag]['char']);
-                    }
-                    // all command related flags
-                    output.relatedFlags.push(optionItem);
-            }
-          }
-        }
-        return output;
-    },
+            // undefined check and populate with 'name'
+            if(!commandFlags[flag]['char'])
+            commandFlags[flag]['char'] = '-'+commandFlags[flag]['name'];
 
-    searchByKey: function(input, searchList, key = 'name') {
+                // build options for command flags
+                const optionItem = {
+                    name: ERROR('-'+commandFlags[flag]['char']) +' '+ commandFlags[flag]['description'],
+                    value: '-'+commandFlags[flag]['char'],
+                    type: commandFlags[flag]['type'],
+                    description:commandFlags[flag]['description'],
+                    required:commandFlags[flag]['required'],
+                    disabled:commandFlags[flag]['required'],
+                    short: commandFlags[flag]['name'],
+                    default: commandFlags[flag]['default'],
+                    options: commandFlags[flag]['options']
+                }
+                // all command related flags
+                output.relatedFlags.push(optionItem);
+        }
+      }
+      // filter all default values passed
+      output.defaultFlags = output.relatedFlags.filter(flag => ( flag.required || 
+                                                                 flag.default == true || 
+                                                                 defaultCommandOptions.includes(flag.value) || 
+                                                                 defaultCommandOptions.includes(flag.short) )).map(item => item.value );
+    }
+    return output;
+    },
+    searchByKey: function(input, searchOptions, key = 'name') {
         input = input || '';
         return new Promise(function(resolve) {
-            var fuzzyResult = fuzzy.filter(input, searchList, {
+            var fuzzyResult = fuzzy.filter(input, searchOptions, {
               extract: function(item) {
                 return item[key];
               }
             });
-
-            var data = fuzzyResult.map(function(element) {
-              return element.original;
-            });
-        resolve(data);
+            resolve( 
+                fuzzyResult.map(function(element) {
+                return element.original;
+            }) );
         });
     },
-
-    createQuestions: function(selectedFlags,allFlags) {
+    createQuestions: function(selectedFlags, schemaOutput) {
         let questions = [];
+        const self = this;
 
-        selectedFlags.forEach(flag => {
-            const matchingFlag = allFlags.find(item => item.value == flag);
+        selectedFlags.forEach(flag => { 
+         
+            const isOptions = flag.type == 'option' ? true : false;
+            const isFile = flag.value == '-f'  ? true : false;
+            const isFolder = flag.value == '-d'  ? true : false;
+            const isSObject = flag.short == 'sobjecttype' ? true : false;
+            const isValues = flag.value == '-v' ? true : false;
+
             let question = {};
-            if(matchingFlag.type == 'option'){
-
-              if(matchingFlag.options) {
-                const flagOptionsValues = matchingFlag.options.map(opt => ({ name : opt, value : opt }));
-              
-                question = {
-                  type: 'list',
-                  name: matchingFlag.value,
-                  message:matchingFlag.description,
-                  default:matchingFlag.default,
-                  choices: flagOptionsValues
+           
+            if( isOptions ){
+                
+                // when have options display as choices
+                if( flag.options ) {
+                    const flagOptionsValues = flag.options.map(opt => ({ name : opt, value : opt }));
+                    question = {
+                        type: 'list',
+                        name: flag.value,
+                        message: flag.description,
+                        default: flag.default,
+                        choices: flagOptionsValues
+                    } 
                 }
-              }
-              else {
-                question = {
-                  type: 'input',
-                  name: matchingFlag.value,
-                  message:matchingFlag.description,
-                  default:matchingFlag.default,
-                  validate: function(value){
-                      return value ? true : 'Must enter a value';
-                  }
+                else if ( isFolder ) {
+                    question = {
+                        type: 'directory',
+                        name: flag.value,
+                        message: flag.description,
+                        basePath: process.cwd()
+                    }
                 }
-              }
-               
-              }
-            else if(matchingFlag.type == 'boolean'){
-               question = {
-                type: 'confirm',
-                name: matchingFlag.value,
-                message:matchingFlag.description
-              }
+                else if ( isFile ) {
+                    question = {
+                        type: 'filePath',
+                        name: flag.value,
+                        message: flag.description,
+                        basePath: process.cwd()
+                    }
+                }
+                else if( isSObject ){
+                         question = {
+                             type: 'autocomplete',
+                             name: flag.value,
+                             message:flag.description,
+                             default:'Account',
+                             pageSize: 5,
+                             suggestOnly: false,
+                             source : function(answers, input){
+                                 return self.searchByKey(input, schemaOutput, 'value');
+                             }
+                         }
+                   }
+                // standard input
+                else {
+                        question = {
+                        type: 'input',
+                        name: flag.value,
+                        message:flag.description,
+                        default:flag.default,
+                        validate: function(value){
+                                    return value ? true : 'Must enter a value';
+                                    }
+                        }}
+                
             }
+            else if(flag.type == 'boolean'){
+                    question = {
+                        type: 'confirm',
+                        name: flag.value,
+                        message:flag.description
+                    }
+            }
+            if(!isValues)
             questions.push(question);
           });
           return questions;
     },
+ 
 
     open: function(path) {
         shell.exec(' open '+ path);

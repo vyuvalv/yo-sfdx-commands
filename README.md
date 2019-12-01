@@ -8,6 +8,8 @@
     - This will allow faster typing of SFDX commands  
     - Rely on `"sfdx commands --json"` command in order to generate the options as auto-complete  
     - Simply Type  `yo [generator name]`  and yeoman will walk you through the command you wish to invoke  
+    - will auto-complete force:org commands with real time org details
+    - will auto-complete force:data commands with schema options
 
 **DEMO**  
 

@@ -1,0 +1,10 @@
+[
+  {
+    "value": " sfdx force:project:create -n DEMO  -p force-app ",
+    "name": "\u001b[91mproject\u001b[39m -  sfdx force:project:create -n DEMO  -p force-app "
+  },
+  {
+    "value": " sfdx force:org:create --json -v dreamforce@yv.com  -u SCRATCH ",
+    "name": "\u001b[91msfcreate\u001b[39m -  sfdx force:org:create --json -v dreamforce@yv.com  -u SCRATCH "
+  }
+]
