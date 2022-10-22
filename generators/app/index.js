@@ -48,8 +48,8 @@ module.exports = class extends Generator {
                 return helper.searchByKey(input, sfdx_commands,'value');
               },
               pageSize: 5,
-              validate: function(val) {
-                let found = sfdx_commands.some(item => item.value === val.value);
+              validate: function(answer) {
+                let found = sfdx_commands.some(item => item.value === answer.value);
                 return found ? true : val +' Was not found in commands ';
               },
             },
