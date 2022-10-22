@@ -140,7 +140,7 @@ module.exports = class extends Generator {
   writing() {
     this.log(WARNING(` will run : \n  ${this.props.run}`));
     const runOutput = helper.runSFDXCommand(this.props.run);
-    this.log( `\n Output : \n\n  ${INFO(runOutput.result)} `);
+    this.log( `\n Output : \n\n  ${INFO(JSON.stringify(runOutput.result,null,' '))} `);
   }
 
   end() {
