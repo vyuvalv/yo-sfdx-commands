@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    
+    // To find location of yo folder type:
+    // 'which yo' and replace the program path
+    
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug yo",
+        "type": "node",
+        "request": "launch",
+        "program": "/Users/<username>/.nvm/versions/node/v16.13.1/bin/yo",
+        "args": [
+          "cmd",
+          "--skip-install"
+        ],
+        "console": "externalTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "stopOnEntry": false
+      }
+    ]
+  }
